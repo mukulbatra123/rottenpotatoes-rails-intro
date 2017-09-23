@@ -1,9 +1,5 @@
 class MoviesController < ApplicationController
 
-  def movie_params
-    params.require(:movie).permit(:title, :rating, :description, :release_date)
-  end
-
   def show
     id = params[:id] # retrieve movie ID from URI route
     @movie = Movie.find(id) # look up movie by unique ID
@@ -11,16 +7,98 @@ class MoviesController < ApplicationController
   end
 
   def index
-    if @index = params[:sort]
-      @movies = Movie.all.order("#{@index} ASC")
-      if @index == 'title'
-        @title_header = 'hilite'
-      elsif @index == 'release_date'
-        @release_header = 'hilite'
+
+   if params[:commit]
+     session.delete(:ratings)
+     if session[:sort]
+       sort = session[:sort]
+       session.delete(:sort)
+       redirect_to(:action => "index", :sort => sort)
+     else
+       redirect_to(:action => "index")
+     end
+   end
+
+    if params[:sort]
+      sort = params[:sort]
+    elsif session[:sort]
+      sort = session[:sort]
+      session.delete(:sort)
+      if session[:ratings]
+        @ratings = session[:ratings]
+        session.delete(:ratings)
+        redirect_to(:action => "index", :sort => sort, :ratings => @ratings)
+      else
+        redirect_to(:action => "index", :sort => sort)
       end
-    else
-      @movies = Movie.all
+    end 
+
+    if params[:ratings]
+      @ratings = params[:ratings]
+    elsif session[:ratings]
+      @ratings = session[:ratings]
+      session.delete(:ratings)
+      if session[:sort]
+        sort = session[:sort]
+        session.delete(:sort)
+        redirect_to(:action => "index", :sort => sort, :ratings => @ratings)
+      else
+        redirect_to(:action => "index", :ratings => @ratings)
+      end
     end
+
+    @all_ratings = []
+    Movie.all.each do |movie|
+      @all_ratings << movie.rating
+    end
+    @all_ratings.uniq!.sort!
+
+    if sort == "title" 
+      if @ratings
+        @movies = []
+        Movie.find(:all, :order => :title).each do |movie|
+          if @ratings.has_key?(movie.rating)
+            @movies << movie
+          end
+        end
+      else
+        @movies = Movie.find(:all, :order => :title)
+      end
+      @hilite = sort.to_sym 
+    elsif sort == "release_date"
+      if @ratings
+        @movies =[]
+        Movie.find(:all, :order => :release_date).each do |movie|
+          if @ratings.has_key?(movie.rating)
+            @movies << movie
+          end
+        end
+      else
+        @movies = Movie.find(:all, :order => :release_date)
+      end
+      @hilite = sort.to_sym 
+    else
+      if @ratings
+        @movies = []
+        Movie.all.each do |movie|
+          if @ratings.has_key?(movie.rating)
+            @movies << movie
+          end
+        end
+      else
+        @movies = Movie.all
+      end
+      @hilite = :none 
+    end
+
+    if params[:sort]
+      session[:sort] = sort
+    end
+
+    if params[:ratings]
+     session[:ratings] = @ratings
+    end
+
   end
 
   def new
@@ -28,7 +106,7 @@ class MoviesController < ApplicationController
   end
 
   def create
-    @movie = Movie.create!(movie_params)
+    @movie = Movie.create!(params[:movie])
     flash[:notice] = "#{@movie.title} was successfully created."
     redirect_to movies_path
   end
@@ -39,7 +117,7 @@ class MoviesController < ApplicationController
 
   def update
     @movie = Movie.find params[:id]
-    @movie.update_attributes!(movie_params)
+    @movie.update_attributes!(params[:movie])
     flash[:notice] = "#{@movie.title} was successfully updated."
     redirect_to movie_path(@movie)
   end
